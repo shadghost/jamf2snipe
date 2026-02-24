@@ -230,7 +230,7 @@ def request_jamf_token():
     logging.debug('Calling for a token against: {}\n The username and password can be found earlier in the script.'.format(api_url))
     # No hook for this API call.
     data = {
-        'client_id': jamf_client_id, 
+        'client_id': jamf_client_id,
         'client_secret': jamf_client_secret,
         "grant_type": "client_credentials"
     }
@@ -575,8 +575,22 @@ def get_snipe_user_id(username):
 def create_snipe_model(payload):
     api_url = '{}/api/v1/models'.format(snipe_base)
     if user_args.add_images:
-        response = session.get('https://img.appledb.dev/device@1024/{}/0.png'.format(payload["model_number"]))
-        payload["image"] = "data:" + response.headers['Content-Type'] + ";" + "base64," + b64encode(response.content).decode("utf-8")
+        try:
+            appledb_url = 'https://api.appledb.dev/device/{}.json'.format(payload["model_number"])
+            logging.debug('Fetching device info from AppleDB: {}'.format(appledb_url))
+            appledb_response = session.get(appledb_url)
+            appledb_response.raise_for_status()
+            appledb_data = appledb_response.json()
+            image_key = appledb_data['imageKey']
+            color = appledb_data['colors'][0]['key']
+            image_url = 'https://img.appledb.dev/device@main/{}/{}.png'.format(image_key, color)
+            logging.debug('Fetching device image from: {}'.format(image_url))
+            response = session.get(image_url)
+            response.raise_for_status()
+            payload["image"] = "data:" + response.headers['Content-Type'] + ";" + "base64," + b64encode(response.content).decode("utf-8")
+            logging.info("image url: {}".format(image_url))
+        except Exception as e:
+            logging.warning('Failed to fetch image for model {}: {}'.format(payload["model_number"], e))
 
     logging.debug('Calling to create new snipe model type against: {}\nThe payload for the POST request is:{}\nThe request headers can be found near the start of the output.'.format(api_url, payload))
     response = session.post(api_url, headers=snipeheaders, json=payload, verify=user_args.do_not_verify_ssl, hooks={'response': request_handler})
